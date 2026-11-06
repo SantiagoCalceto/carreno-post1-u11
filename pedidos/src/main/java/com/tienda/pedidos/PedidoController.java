@@ -1,28 +1,24 @@
 package com.tienda.pedidos;
 
+import com.tienda.pedidos.entity.Pedido;
+import com.tienda.pedidos.repository.PedidoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
-// CODIGO DE PARTIDA (a refactorizar en la Parte 1). Violaciones:
-//  - SRP: crearPedido valida, calcula, arma SQL, persiste, notifica y registra en un solo bloque
-//  - DIP: NotificacionEmailService se crea con "new"
-//  - SQL embebido y concatenado en el controller (inyeccion SQL)
-//  - Devuelve la entidad completa (expone notasInternas)
-//  - try/catch que silencia el error y devuelve null (200 vacio en vez de 404)
+// REFACTORIZACION EN CURSO (paso 2 de 4): el SQL concatenado con JdbcTemplate se reemplazo por
+// PedidoRepository (JpaRepository). Todavia quedan pendientes: SRP (la logica sigue en el controller),
+// DIP ("new" de la notificacion), la entidad expuesta en la respuesta y el try/catch que devuelve null.
 @RestController
 @RequestMapping("/api/pedidos")
 public class PedidoController {
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private PedidoRepository pedidoRepository;
 
     @PostMapping
     public Pedido crearPedido(@RequestBody Pedido pedido) {
-        // 1. Validar manualmente, sin Bean Validation
         if (pedido.getClienteEmail() == null || pedido.getClienteEmail().isBlank()) {
             throw new RuntimeException("El email del cliente es obligatorio");
         }
@@ -30,7 +26,6 @@ public class PedidoController {
             throw new RuntimeException("El subtotal debe ser mayor a cero");
         }
 
-        // 2. Calcular el descuento segun tipo de cliente (logica de negocio en el controller)
         double descuento;
         if ("VIP".equalsIgnoreCase(pedido.getTipoCliente())) {
             descuento = pedido.getSubtotal() * 0.15;
@@ -50,32 +45,23 @@ public class PedidoController {
         pedido.setFechaCreacion(LocalDateTime.now());
         pedido.setNotasInternas("Pedido creado automaticamente, revisar stock antes de despachar");
 
-        // 3. Persistir con SQL embebido y concatenado directamente en el controller
-        String sql = "INSERT INTO pedido (cliente_email, tipo_cliente, subtotal, descuento, iva, total, "
-                    + "estado, notas_internas, fecha_creacion) VALUES ('" + pedido.getClienteEmail() + "', '"
-                    + pedido.getTipoCliente() + "', " + pedido.getSubtotal() + ", " + descuento + ", " + iva
-                    + ", " + total + ", 'CREADO', '" + pedido.getNotasInternas() + "', NOW())";
-        jdbcTemplate.update(sql);
+        // Sin SQL escrito a mano: JPA genera un INSERT con parametros
+        Pedido guardado = pedidoRepository.save(pedido);
 
-        // 4. Enviar correo de confirmacion — dependencia creada con "new", no inyectada
         NotificacionEmailService notificador = new NotificacionEmailService();
-        notificador.enviar(pedido.getClienteEmail(), "Tu pedido fue creado. Total: " + total);
+        notificador.enviar(guardado.getClienteEmail(), "Tu pedido fue creado. Total: " + total);
 
-        // 5. Loggear con println
-        System.out.println("Pedido creado para " + pedido.getClienteEmail());
-
-        // 6. Devolver la ENTIDAD directamente como respuesta JSON (incluye notasInternas)
-        return pedido;
+        System.out.println("Pedido creado para " + guardado.getClienteEmail());
+        return guardado;
     }
 
     @GetMapping("/{id}")
     public Pedido obtenerPedido(@PathVariable Long id) {
         try {
-            String sql = "SELECT * FROM pedido WHERE id = " + id;
-            return jdbcTemplate.queryForObject(sql, new BeanPropertyRowMapper<>(Pedido.class));
+            return pedidoRepository.findById(id).orElseThrow();
         } catch (Exception e) {
             System.out.println("Error: " + e.getMessage());
-            return null; // el cliente recibe 200 OK con cuerpo vacio en vez de 404
+            return null;
         }
     }
 }

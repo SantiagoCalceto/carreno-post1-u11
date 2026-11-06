@@ -1,26 +1,17 @@
-package com.tienda.pedidos;
+package com.tienda.pedidos.dto;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+// DTO de salida: lo unico que ve el cliente de la API. NO declara notasInternas
+// (ni fechaCreacion interna): aunque la entidad cambie, este contrato no filtra datos.
+public class PedidoResponseDTO {
 
-import java.time.LocalDateTime;
-
-// CODIGO DE PARTIDA (a refactorizar): entidad sin DTO; notasInternas sale en cualquier respuesta
-@Entity
-public class Pedido {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String clienteEmail;
-    private String tipoCliente;      // REGULAR, VIP o MAYORISTA
+    private String tipoCliente;
     private Double subtotal;
     private Double descuento;
     private Double iva;
     private Double total;
     private String estado;
-    private String notasInternas;    // uso exclusivo de logistica, nunca debe salir al cliente
-    private LocalDateTime fechaCreacion;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -38,8 +29,4 @@ public class Pedido {
     public void setTotal(Double total) { this.total = total; }
     public String getEstado() { return estado; }
     public void setEstado(String estado) { this.estado = estado; }
-    public String getNotasInternas() { return notasInternas; }
-    public void setNotasInternas(String notasInternas) { this.notasInternas = notasInternas; }
-    public LocalDateTime getFechaCreacion() { return fechaCreacion; }
-    public void setFechaCreacion(LocalDateTime fechaCreacion) { this.fechaCreacion = fechaCreacion; }
 }
