@@ -5,30 +5,39 @@ import com.tienda.pedidos.dto.PedidoResponseDTO;
 import com.tienda.pedidos.entity.Pedido;
 import com.tienda.pedidos.exception.RecursoNoEncontradoException;
 import com.tienda.pedidos.repository.PedidoRepository;
+import com.tienda.pedidos.strategy.EstrategiaDescuento;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 public class PedidoServiceImpl implements PedidoService {
 
     static final double TASA_IVA = 0.19;
+    static final String TIPO_POR_DEFECTO = "REGULAR";
 
     private final PedidoRepository repo;
     private final NotificacionService notificador;
+    private final Map<String, EstrategiaDescuento> estrategias;
 
-    // Todas las dependencias llegan por constructor (DIP): ningun colaborador se crea con "new"
-    public PedidoServiceImpl(PedidoRepository repo, NotificacionService notificador) {
+    // Todas las dependencias llegan por constructor (DIP): ningun colaborador se crea con "new".
+    // Spring llena el Map con los beans EstrategiaDescuento, usando el nombre del bean como llave.
+    public PedidoServiceImpl(PedidoRepository repo,
+                             NotificacionService notificador,
+                             Map<String, EstrategiaDescuento> estrategias) {
         this.repo        = repo;
         this.notificador = notificador;
+        this.estrategias = estrategias;
     }
 
     @Override
     public PedidoResponseDTO crear(PedidoRequestDTO dto) {
-        String tipo = dto.getTipoCliente().trim().toUpperCase();
-        double descuento = redondear(calcularDescuento(tipo, dto.getSubtotal()));
+        String tipo = resolverTipo(dto.getTipoCliente());
+        EstrategiaDescuento estrategia = estrategias.get(tipo);
+        double descuento = redondear(estrategia.calcularDescuento(dto.getSubtotal()));
 
         double baseConDescuento = dto.getSubtotal() - descuento;
         double iva = redondear(baseConDescuento * TASA_IVA);
@@ -58,15 +67,10 @@ public class PedidoServiceImpl implements PedidoService {
         return toResponseDTO(p);
     }
 
-    // TEMPORAL: el if/else salio del controller, pero sigue siendo una cadena de condiciones.
-    // En el siguiente paso se reemplaza por el patron Strategy (EstrategiaDescuento).
-    private double calcularDescuento(String tipo, double subtotal) {
-        if ("VIP".equals(tipo)) {
-            return subtotal * 0.15;
-        } else if ("MAYORISTA".equals(tipo)) {
-            return subtotal * 0.25;
-        }
-        return 0.0;
+    // Un tipo de cliente desconocido no rompe la creacion: se aplica la estrategia REGULAR
+    private String resolverTipo(String tipoCliente) {
+        String tipo = tipoCliente.trim().toUpperCase();
+        return estrategias.containsKey(tipo) ? tipo : TIPO_POR_DEFECTO;
     }
 
     // Montos de dinero a 2 decimales (HALF_UP) para evitar residuos de punto flotante
